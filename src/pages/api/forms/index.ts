@@ -11,7 +11,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             case "GET": {
                 const { id } = req.query;
                 if (id) {
-                    // Get single form
                     const form = await formServerUtils.getForm(id as string);
                     if (!form) {
                         return res.status(404).json({ error: "Form not found" });

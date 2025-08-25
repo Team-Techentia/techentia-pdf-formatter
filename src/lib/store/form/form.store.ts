@@ -1,195 +1,190 @@
 // @/lib/store/formStore.ts
-
-import { create } from 'zustand';
-import { Form, FormField, FormData } from '@/lib/types';
+import { create } from "zustand";
+import { Form, FormField, FormData } from "@/lib/types";
+import { FormService } from "@/lib/services";
 
 interface FormStore {
-  // State
   forms: Form[];
   selectedForm: Form | null;
   selectedFields: string[];
   formData: FormData;
-  isLoading: boolean;
-  error: string | null;
+  isFormLoading: boolean;
+  formError: string | null;
 
-  // Actions
   loadForms: () => Promise<void>;
   selectForm: (form: Form) => void;
-  createForm: (form: Omit<Form, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Form>;
+  createForm: (form: Omit<Form, "id" | "createdAt" | "updatedAt">) => Promise<Form>;
   updateForm: (id: string, updates: Partial<Form>) => Promise<void>;
   deleteForm: (id: string) => Promise<void>;
-  
-  // Field management
+
   addField: (formId: string, field: FormField) => Promise<void>;
   updateField: (formId: string, fieldId: string, updates: Partial<FormField>) => Promise<void>;
   removeField: (formId: string, fieldId: string) => Promise<void>;
-  
-  // Field selection for preview
+
   selectField: (fieldId: string) => void;
   deselectField: (fieldId: string) => void;
   toggleFieldSelection: (fieldId: string) => void;
   clearFieldSelection: () => void;
-  
-  // Form data management
+
   updateFormData: (fieldName: string, value: any) => void;
   clearFormData: () => void;
-  
-  // Utility
-  setError: (error: string | null) => void;
+
+  setError: (formError: string | null) => void;
   clearError: () => void;
 }
 
 export const useFormStore = create<FormStore>((set, get) => ({
-  // Initial state
   forms: [],
   selectedForm: null,
   selectedFields: [],
   formData: {},
-  isLoading: false,
-  error: null,
+  isFormLoading: false,
+  formError: null,
 
-  // Actions
   loadForms: async () => {
-    set({ isLoading: true, error: null });
+    set({ isFormLoading: true, formError: null });
     try {
-      const firebase = FirebaseService.getInstance();
-      await firebase.initializeSampleData(); // Initialize sample data
-      const forms = await firebase.getForms();
-      set({ forms, isLoading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to load forms', 
-        isLoading: false 
+      const { forms } = await FormService.getForms();
+      set({ forms, isFormLoading: false });
+    } catch (formError) {
+      set({
+        formError: formError instanceof Error ? formError.message : "Failed to load forms",
+        isFormLoading: false,
       });
     }
   },
 
   selectForm: (form: Form) => {
-    set({ 
+    set({
       selectedForm: form,
       selectedFields: [],
-      formData: {}
+      formData: {},
     });
   },
 
-  createForm: async (formData: Omit<Form, 'id' | 'createdAt' | 'updatedAt'>) => {
-    set({ isLoading: true, error: null });
+  createForm: async (formData) => {
+    set({ isFormLoading: true, formError: null });
     try {
-      const firebase = FirebaseService.getInstance();
-      const newForm = await firebase.createForm(formData);
-      set(state => ({
+      const newForm = await FormService.createForm(formData);
+      set((state) => ({
         forms: [...state.forms, newForm],
-        isLoading: false
+        isFormLoading: false,
       }));
       return newForm;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create form';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
+    } catch (formError) {
+      const errorMessage =
+        formError instanceof Error ? formError.message : "Failed to create form";
+      set({ formError: errorMessage, isFormLoading: false });
+      throw formError;
     }
   },
 
-  updateForm: async (id: string, updates: Partial<Form>) => {
-    set({ isLoading: true, error: null });
+  updateForm: async (id, updates) => {
+    set({ isFormLoading: true, formError: null });
     try {
-      const firebase = FirebaseService.getInstance();
-      const updatedForm = await firebase.updateForm(id, updates);
-      set(state => ({
-        forms: state.forms.map(form => form.id === id ? updatedForm : form),
-        selectedForm: state.selectedForm?.id === id ? updatedForm : state.selectedForm,
-        isLoading: false
+      const updatedForm = await FormService.updateForm(id, updates);
+      set((state) => ({
+        forms: state.forms.map((form) =>
+          form.id === id ? updatedForm : form
+        ),
+        selectedForm:
+          state.selectedForm?.id === id ? updatedForm : state.selectedForm,
+        isFormLoading: false,
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update form';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
+    } catch (formError) {
+      const errorMessage =
+        formError instanceof Error ? formError.message : "Failed to update form";
+      set({ formError: errorMessage, isFormLoading: false });
+      throw formError;
     }
   },
 
-  deleteForm: async (id: string) => {
-    set({ isLoading: true, error: null });
+  deleteForm: async (id) => {
+    set({ isFormLoading: true, formError: null });
     try {
-      const firebase = FirebaseService.getInstance();
-      await firebase.deleteForm(id);
-      set(state => ({
-        forms: state.forms.filter(form => form.id !== id),
-        selectedForm: state.selectedForm?.id === id ? null : state.selectedForm,
-        isLoading: false
+      await FormService.deleteForm(id);
+      set((state) => ({
+        forms: state.forms.filter((form) => form.id !== id),
+        selectedForm:
+          state.selectedForm?.id === id ? null : state.selectedForm,
+        isFormLoading: false,
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete form';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
+    } catch (formError) {
+      const errorMessage =
+        formError instanceof Error ? formError.message : "Failed to delete form";
+      set({ formError: errorMessage, isFormLoading: false });
+      throw formError;
     }
   },
 
-  // Field management
-  addField: async (formId: string, field: FormField) => {
+  addField: async (formId, field) => {
     try {
-      const firebase = FirebaseService.getInstance();
-      const updatedForm = await firebase.addFieldToForm(formId, field);
-      set(state => ({
-        forms: state.forms.map(form => form.id === formId ? updatedForm : form),
-        selectedForm: state.selectedForm?.id === formId ? updatedForm : state.selectedForm
+      const updatedForm = await FormService.addField(formId, field);
+      set((state) => ({
+        forms: state.forms.map((form) =>
+          form.id === formId ? updatedForm : form
+        ),
+        selectedForm:
+          state.selectedForm?.id === formId ? updatedForm : state.selectedForm,
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to add field';
-      set({ error: errorMessage });
-      throw error;
+    } catch (formError) {
+      set({ formError: "Failed to add field" });
+      throw formError;
     }
   },
 
-  updateField: async (formId: string, fieldId: string, updates: Partial<FormField>) => {
+  updateField: async (formId, fieldId, updates) => {
     try {
-      const firebase = FirebaseService.getInstance();
-      const updatedForm = await firebase.updateFieldInForm(formId, fieldId, updates);
-      set(state => ({
-        forms: state.forms.map(form => form.id === formId ? updatedForm : form),
-        selectedForm: state.selectedForm?.id === formId ? updatedForm : state.selectedForm
+      const updatedForm = await FormService.updateField(formId, fieldId, updates);
+      set((state) => ({
+        forms: state.forms.map((form) =>
+          form.id === formId ? updatedForm : form
+        ),
+        selectedForm:
+          state.selectedForm?.id === formId ? updatedForm : state.selectedForm,
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update field';
-      set({ error: errorMessage });
-      throw error;
+    } catch (formError) {
+      set({ formError: "Failed to update field" });
+      throw formError;
     }
   },
 
-  removeField: async (formId: string, fieldId: string) => {
+  removeField: async (formId, fieldId) => {
     try {
-      const firebase = FirebaseService.getInstance();
-      const updatedForm = await firebase.removeFieldFromForm(formId, fieldId);
-      set(state => ({
-        forms: state.forms.map(form => form.id === formId ? updatedForm : form),
-        selectedForm: state.selectedForm?.id === formId ? updatedForm : state.selectedForm,
-        selectedFields: state.selectedFields.filter(id => id !== fieldId)
+      const updatedForm = await FormService.removeField(formId, fieldId);
+      set((state) => ({
+        forms: state.forms.map((form) =>
+          form.id === formId ? updatedForm : form
+        ),
+        selectedForm:
+          state.selectedForm?.id === formId ? updatedForm : state.selectedForm,
+        selectedFields: state.selectedFields.filter((id) => id !== fieldId),
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to remove field';
-      set({ error: errorMessage });
-      throw error;
+    } catch (formError) {
+      set({ formError: "Failed to remove field" });
+      throw formError;
     }
   },
 
-  // Field selection
-  selectField: (fieldId: string) => {
-    set(state => ({
-      selectedFields: state.selectedFields.includes(fieldId) 
-        ? state.selectedFields 
-        : [...state.selectedFields, fieldId]
-    }));
-  },
-
-  deselectField: (fieldId: string) => {
-    set(state => ({
-      selectedFields: state.selectedFields.filter(id => id !== fieldId)
-    }));
-  },
-
-  toggleFieldSelection: (fieldId: string) => {
-    set(state => ({
+  selectField: (fieldId) => {
+    set((state) => ({
       selectedFields: state.selectedFields.includes(fieldId)
-        ? state.selectedFields.filter(id => id !== fieldId)
-        : [...state.selectedFields, fieldId]
+        ? state.selectedFields
+        : [...state.selectedFields, fieldId],
+    }));
+  },
+
+  deselectField: (fieldId) => {
+    set((state) => ({
+      selectedFields: state.selectedFields.filter((id) => id !== fieldId),
+    }));
+  },
+
+  toggleFieldSelection: (fieldId) => {
+    set((state) => ({
+      selectedFields: state.selectedFields.includes(fieldId)
+        ? state.selectedFields.filter((id) => id !== fieldId)
+        : [...state.selectedFields, fieldId],
     }));
   },
 
@@ -197,13 +192,12 @@ export const useFormStore = create<FormStore>((set, get) => ({
     set({ selectedFields: [] });
   },
 
-  // Form data management
-  updateFormData: (fieldName: string, value: any) => {
-    set(state => ({
+  updateFormData: (fieldName, value) => {
+    set((state) => ({
       formData: {
         ...state.formData,
-        [fieldName]: value
-      }
+        [fieldName]: value,
+      },
     }));
   },
 
@@ -211,12 +205,11 @@ export const useFormStore = create<FormStore>((set, get) => ({
     set({ formData: {} });
   },
 
-  // Utility
-  setError: (error: string | null) => {
-    set({ error });
+  setError: (formError) => {
+    set({ formError });
   },
 
   clearError: () => {
-    set({ error: null });
-  }
+    set({ formError: null });
+  },
 }));
