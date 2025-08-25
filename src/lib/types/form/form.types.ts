@@ -28,7 +28,7 @@ export interface FormField {
   };
 }
 
-export type FieldType = 'input' | 'textarea' | 'select' | 'date' | 'number' | 'email' | 'file' | 'checkbox' | 'radio';
+export type FieldType = 'input' | 'textarea' | 'select' | 'date' | 'datetime-local' | 'number' | 'email' | 'file' | 'checkbox' | 'radio';
 
 export interface SelectOption {
   value: string;

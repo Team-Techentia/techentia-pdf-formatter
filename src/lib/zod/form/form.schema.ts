@@ -48,6 +48,6 @@ export const FormSchema = z.object({
   name: z.string().min(1, "Form name is required"),
   description: z.string().optional(),
   pdfUrl: z.string().url("Must be a valid URL"),
-  fields: z.array(FormFieldSchema).min(1, "At least one field is required"),
+  fields: z.array(FormFieldSchema),
 });
 

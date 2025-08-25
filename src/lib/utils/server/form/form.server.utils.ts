@@ -1,33 +1,14 @@
 import { db } from '@/lib/firebase/firestore';
 import { ApiResponse, Form, FormField } from '@/lib/types';
 import { FormSchema } from '@/lib/zod';
-import {
-    addDoc,
-    collection,
-    deleteDoc,
-    doc,
-    getCountFromServer,
-    getDoc,
-    getDocs,
-    limit,
-    orderBy,
-    query,
-    updateDoc,
-    where,
-} from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc, where, } from 'firebase/firestore';
 import { errorServerUtils } from '../error/error.utils';
 
 function ensureFieldIds(fields: FormField[]): FormField[] {
-    return fields.map((field) => ({
-        ...field,
-        id: field.id || doc(collection(db, 'forms')).id,
-    }));
+    return fields.map((field) => ({ ...field, id: field.id || doc(collection(db, 'forms')).id, }));
 }
 
 export const formServerUtils = {
-    /**
-     * Create a new form
-     */
     async createForm(formData: Partial<Form>): Promise<ApiResponse<Form>> {
         try {
             const parsed = FormSchema.safeParse(formData);
@@ -36,14 +17,9 @@ export const formServerUtils = {
                 return { success: false, message: "Validation failed", error: errorServerUtils.handleZodError(parsed.error), };
             }
 
-            const fieldsWithIds: FormField[] = parsed.data.fields.map((field) => ({ ...field, id: field.id || doc(collection(db, "forms")).id, }));
+            const fieldsWithIds = parsed.data.fields.map((field) => ({ ...field, id: field.id || doc(collection(db, "forms")).id, }));
 
-            const payload = {
-                ...parsed.data,
-                fields: fieldsWithIds,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
+            const payload = { ...parsed.data, fields: fieldsWithIds, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), };
 
             const docRef = await addDoc(collection(db, "forms"), payload);
             const docSnap = await getDoc(docRef);
@@ -55,10 +31,6 @@ export const formServerUtils = {
             return { success: false, message: "Failed to create the form", error };
         }
     },
-
-    /**
-     * Get a single form by ID
-     */
     async getForm(formId: string): Promise<ApiResponse<Form>> {
         try {
             const docRef = doc(db, 'forms', formId);
@@ -72,41 +44,52 @@ export const formServerUtils = {
             return { success: false, message: 'Failed to fetch form', error };
         }
     },
-
-    /**
-     * Get multiple forms with optional filtering
-     */
-    async getForms(options: { limit?: number; offset?: number; } = {}): Promise<ApiResponse<{ forms: Form[]; total: number }>> {
+    async getForms(options: { limit?: number; offset?: number } = {}) {
         try {
-            const baseQuery = collection(db, 'forms');
-            let constraints: any[] = [orderBy('createdAt', 'desc')];
+            const baseQuery = collection(db, "forms");
+            const limitValue = options.limit || 10;
+            let constraints: any[] = [orderBy("createdAt", "desc")];
 
-            if (options.limit) constraints.push(limit(options.limit));
+            if (options.offset && options.offset > 0) {
+                const skipQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(options.offset));
+                const skipSnapshot = await getDocs(skipQuery);
+
+                if (skipSnapshot.docs.length > 0) {
+                    const lastDoc = skipSnapshot.docs[skipSnapshot.docs.length - 1];
+                    constraints.push(startAfter(lastDoc));
+                }
+            }
+
+            constraints.push(limit(limitValue));
 
             const q = query(baseQuery, ...constraints);
             const querySnapshot = await getDocs(q);
 
             const forms: Form[] = [];
-            querySnapshot.forEach((d) => {
-                const parsed = FormSchema.safeParse({ id: d.id, ...d.data() });
-                if (parsed.success) forms.push(parsed.data as Form);
-            });
+            querySnapshot.forEach((doc) => {
+                try {
+                    const data = { id: doc.id, ...doc.data() };
+                    const parsed = FormSchema.safeParse(data);
 
-            const offset = options.offset || 0;
-            const paginatedForms = forms.slice(offset, offset + (options.limit || 10));
+                    if (parsed.success) {
+                        forms.push(parsed.data as Form);
+                    } else {
+                        console.warn(`Failed to parse form ${doc.id}:`, parsed.error);
+                    }
+                } catch (parseError) {
+                    console.error(`Error parsing document ${doc.id}:`, parseError);
+                }
+            });
 
             const countSnapshot = await getCountFromServer(baseQuery);
             const total = countSnapshot.data().count;
 
-            return { success: true, data: { forms: paginatedForms, total } };
+            return { success: true, data: { forms, total } };
         } catch (error: any) {
-            return { success: false, message: 'Failed to fetch forms', error };
+            console.error('Error in getForms:', error);
+            return { success: false, message: "Failed to fetch forms", error };
         }
     },
-
-    /**
-     * Update an existing form
-     */
     async updateForm(
         formId: string,
         updateData: Partial<Form>
@@ -119,10 +102,7 @@ export const formServerUtils = {
             }
 
             const { id, createdAt, ...allowedUpdates } = updateData;
-            const updatePayload = {
-                ...allowedUpdates,
-                updatedAt: new Date().toISOString(),
-            };
+            const updatePayload = { ...allowedUpdates, updatedAt: serverTimestamp(), };
 
             if (updatePayload.fields) {
                 updatePayload.fields = ensureFieldIds(updatePayload.fields as FormField[]);
@@ -140,10 +120,6 @@ export const formServerUtils = {
             return { success: false, message: 'Failed to update form', error };
         }
     },
-
-    /**
-     * Delete a form
-     */
     async deleteForm(formId: string): Promise<ApiResponse<null>> {
         try {
             const docRef = doc(db, 'forms', formId);
@@ -159,14 +135,86 @@ export const formServerUtils = {
             return { success: false, message: 'Failed to delete form', error };
         }
     },
+    async addField(formId: string, field: FormField): Promise<ApiResponse<Form>> {
+        try {
+            const docRef = doc(db, 'forms', formId);
+            const docSnap = await getDoc(docRef);
 
-    /**
-     * Search forms by name or description
-     */
-    async searchForms(
-        searchTerm: string,
-        userId?: string
-    ): Promise<ApiResponse<Form[]>> {
+            if (!docSnap.exists()) {
+                return { success: false, message: 'Form not found' };
+            }
+
+            const formData = docSnap.data() as Form;
+            const currentFields = formData.fields || [];
+
+            const fieldWithId = { ...field, id: field.id || doc(collection(db, 'forms')).id, };
+            const updatedFields = [...currentFields, fieldWithId];
+
+            await updateDoc(docRef, { fields: updatedFields, updatedAt: serverTimestamp(), });
+
+            const updatedDoc = await getDoc(docRef);
+            const updatedFormData = { id: updatedDoc.id, ...updatedDoc.data() } as Form;
+
+            return { success: true, data: updatedFormData };
+        } catch (error: any) {
+            return { success: false, message: 'Failed to add field', error };
+        }
+    },
+    async updateField(formId: string, fieldId: string, fieldUpdates: Partial<FormField>): Promise<ApiResponse<Form>> {
+        try {
+            const docRef = doc(db, 'forms', formId);
+            const docSnap = await getDoc(docRef);
+
+            if (!docSnap.exists()) {
+                return { success: false, message: 'Form not found' };
+            }
+
+            const formData = docSnap.data() as Form;
+            const currentFields = formData.fields || [];
+
+            const fieldIndex = currentFields.findIndex(field => field.id === fieldId);
+            if (fieldIndex === -1) {
+                return { success: false, message: 'Field not found' };
+            }
+
+            const updatedFields = [...currentFields];
+            updatedFields[fieldIndex] = { ...updatedFields[fieldIndex], ...fieldUpdates, id: fieldId, };
+
+            await updateDoc(docRef, { fields: updatedFields, updatedAt: serverTimestamp(), });
+
+            const updatedDoc = await getDoc(docRef);
+            const updatedFormData = { id: updatedDoc.id, ...updatedDoc.data() } as Form;
+
+            return { success: true, data: updatedFormData };
+        } catch (error: any) {
+            return { success: false, message: 'Failed to update field', error };
+        }
+    },
+    async removeField(formId: string, fieldId: string): Promise<ApiResponse<Form>> {
+        try {
+            const docRef = doc(db, 'forms', formId);
+            const docSnap = await getDoc(docRef);
+
+            if (!docSnap.exists()) {
+                return { success: false, message: 'Form not found' };
+            }
+
+            const formData = docSnap.data() as Form;
+            const currentFields = formData.fields || [];
+
+            const updatedFields = currentFields.filter(field => field.id !== fieldId);
+
+            await updateDoc(docRef, { fields: updatedFields, updatedAt: serverTimestamp(), });
+
+            const updatedDoc = await getDoc(docRef);
+            const updatedFormData = { id: updatedDoc.id, ...updatedDoc.data() } as Form;
+
+            return { success: true, data: updatedFormData };
+        } catch (error: any) {
+            return { success: false, message: 'Failed to remove field', error };
+        }
+    },
+    async searchForms(searchTerm: string, userId?: string): Promise<ApiResponse<Form[]>> {
         try {
             let constraints: any[] = [orderBy('createdAt', 'desc')];
             if (userId) constraints.unshift(where('userId', '==', userId));
@@ -178,16 +226,13 @@ export const formServerUtils = {
             const searchLower = searchTerm.toLowerCase();
 
             querySnapshot.forEach((d) => {
-                const parsed = FormSchema.safeParse({ id: d.id, ...d.data() });
-                if (parsed.success) {
-                    const form = parsed.data;
-                    if (
-                        form.name.toLowerCase().includes(searchLower) ||
-                        (form.description &&
-                            form.description.toLowerCase().includes(searchLower))
-                    ) {
-                        forms.push(form as Form);
-                    }
+                const formData = { id: d.id, ...d.data() } as Form;
+                if (!formData.fields) {
+                    formData.fields = [];
+                }
+
+                if (formData.name.toLowerCase().includes(searchLower) || (formData.description && formData.description.toLowerCase().includes(searchLower))) {
+                    forms.push(formData);
                 }
             });
 
