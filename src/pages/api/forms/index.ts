@@ -6,7 +6,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         switch (req.method) {
             case "POST": {
                 const result = await formServerUtils.createForm(req.body);
-                res.status(result.success ? 201 : 404).json(result)
+                res.status(result.success ? 201 : 404).json(result);
             }
             case "GET": {
                 const { id } = req.query;
