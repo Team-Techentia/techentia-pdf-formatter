@@ -37,9 +37,24 @@ export const formServerUtils = {
             const docSnap = await getDoc(docRef);
 
             if (docSnap.exists()) {
-                return { success: false, data: { ...docSnap.data() as Form } };
+                const raw = docSnap.data();
+
+                const data = {
+                    id: docSnap.id,
+                    ...raw,
+                    createdAt: raw.createdAt?.toDate ? raw.createdAt.toDate().toISOString() : null,
+                    updatedAt: raw.updatedAt?.toDate ? raw.updatedAt.toDate().toISOString() : null,
+                };
+
+                const parsed = FormSchema.safeParse(data);
+                if (parsed.success) {
+                    return { success: true, data: parsed.data as Form };
+                } else {
+                    return { success: false, message: "Invalid form schema", error: parsed.error };
+                }
             }
-            return { success: false, message: 'Failed to fetch form', };
+
+            return { success: false, message: 'Form not found' };
         } catch (error: any) {
             return { success: false, message: 'Failed to fetch form', error };
         }
@@ -51,7 +66,11 @@ export const formServerUtils = {
             let constraints: any[] = [orderBy("createdAt", "desc")];
 
             if (options.offset && options.offset > 0) {
-                const skipQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(options.offset));
+                const skipQuery = query(
+                    baseQuery,
+                    orderBy("createdAt", "desc"),
+                    limit(options.offset)
+                );
                 const skipSnapshot = await getDocs(skipQuery);
 
                 if (skipSnapshot.docs.length > 0) {
@@ -68,7 +87,15 @@ export const formServerUtils = {
             const forms: Form[] = [];
             querySnapshot.forEach((doc) => {
                 try {
-                    const data = { id: doc.id, ...doc.data() };
+                    const raw = doc.data();
+
+                    const data = {
+                        id: doc.id,
+                        ...raw,
+                        createdAt: raw.createdAt?.toDate ? raw.createdAt.toDate().toISOString() : null,
+                        updatedAt: raw.updatedAt?.toDate ? raw.updatedAt.toDate().toISOString() : null,
+                    };
+
                     const parsed = FormSchema.safeParse(data);
 
                     if (parsed.success) {
@@ -86,7 +113,7 @@ export const formServerUtils = {
 
             return { success: true, data: { forms, total } };
         } catch (error: any) {
-            console.error('Error in getForms:', error);
+            console.error("Error in getForms:", error);
             return { success: false, message: "Failed to fetch forms", error };
         }
     },

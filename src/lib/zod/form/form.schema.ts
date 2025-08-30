@@ -44,10 +44,11 @@ export const FormFieldSchema = z.object({
 });
 
 export const FormSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, "Form name is required"),
+  id: z.string(),
+  name: z.string(),
   description: z.string().optional(),
-  pdfUrl: z.string().url("Must be a valid URL"),
-  fields: z.array(FormFieldSchema),
+  pdfUrl: z.string().url(),
+  fields: z.array(z.any()),
+  createdAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime().nullable(),
 });
-
